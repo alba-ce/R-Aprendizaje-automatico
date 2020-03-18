@@ -1,0 +1,240 @@
+---
+title: "Práctica 3: Predicción de estructuras secundarias en proteínas"
+output: html_document
+---
+Alba Cerro Monje
+
+Alejandro Moreno Díaz
+
+Arturo Redondo Luque
+
+
+## Ejercicio 1: Conjunto de datos y definiciones
+```{r}
+# Conjunto de datos
+df = read.csv("data.txt", sep = ",", header = TRUE)
+
+# Definición de tipo de dato de cada columna
+df[] = lapply(df, as.character)
+df = transform(df, len = as.numeric(len))
+
+# Alfabeto
+alphabet = strsplit("RKDEQSCHNTWYMAILFVPG","")
+lalp = length(alphabet[[1]])
+cat('Longitud del alfabeto:', lalp, '\n')
+
+# Número de instancias
+nseq = nrow(df)
+cat('Número de instancias:', nseq, '\n')
+
+# Longitud de las secuencias
+lseq = df$len[1]
+cat('Longitud de las secuencias:', lseq, '\n')
+```
+
+## Ejemplo 1: Lista de estructuras
+```{r}
+strlist = strsplit("CEH","")
+nsta = length(strlist[[1]])
+cat("Número de estructuras por aa:", nsta, "\n")
+```
+
+## Ejercicio 2: Conjunto de entrenamiento y validación
+```{r}
+training = sample(nseq, 0.7*nseq, replace = FALSE)
+dftrain = df[training,]
+ntrain = nrow(dftrain)
+cat('Longitud del conjunto de entrenamiento:', ntrain, '\n')
+
+dftest = df[-training,]
+ntest = nrow(dftest)
+cat('Longitud del conjunto de validación:', ntest)
+```
+
+## Ejemplo 2: Obtención de los aminoácidos asociados a la estructura C en la primera secuencia
+```{r}
+struc = strsplit(dftrain$sst3[1],"")
+seque = strsplit(dftrain$seq[1],"")
+idx = which(struc[[1]] == "C")
+
+if (length(idx) > 0){
+  aasubset = seque[[1]][idx]
+  laasubset = length(aasubset)
+  print(aasubset)
+}
+```
+
+## Ejercicio 3: Frecuencias de aparación de los aminoácidos asociados a la estructura C en la primera secuencia
+```{r}
+frecs = matrix(c(0), nrow = 1, ncol = 20)
+colnames(frecs) = alphabet[[1]]
+
+for(i in 1:lalp){
+  n = which(aasubset == alphabet[[1]][i])
+  frecs[i] = length(n)
+}
+
+frecs
+```
+
+## Ejercicio 4: Frecuencias absolutas de todos los aminoácidos asociados a la estructura C
+```{r}
+count = function(n, e){
+  struc = strsplit(dftrain$sst3[n],"")
+  seque = strsplit(dftrain$seq[n],"")
+  idx = which(struc[[1]] == e)
+  
+  if (length(idx) > 0){
+    aasubset = seque[[1]][idx]
+  }
+  return(aasubset)
+}
+
+
+for (i in 2:ntrain){
+  s = count(i, 'C')
+  for(j in 1:lalp){
+    n = which(s == alphabet[[1]][j])
+    frecs[j] = frecs[j] + length(n)   
+  }
+}
+
+frecs
+```
+
+## Ejercicio 5: Matriz de emisión
+```{r}
+frec_h = rep(0, 20)
+frec_e = rep(0, 20)
+
+for (i in 1:ntrain){
+  h = count(i, 'H')
+  e = count(i, 'E')
+  for(j in 1:lalp){
+    n = which(h == alphabet[[1]][j])
+    frec_h[j] = frec_h[j] + length(n)
+    
+    m = which(e == alphabet[[1]][j])
+    frec_e[j] = frec_e[j] + length(m)
+  }
+}
+
+emission = rbind(frecs, frec_e, frec_h)
+rownames(emission) = strlist[[1]]
+
+emission = emission / rowSums(emission)
+emission
+```
+
+
+
+
+## Ejercicio 6: Matriz de transiciones entre estados y vector de probabilidades inicial
+```{r}
+# Matriz de transiciones
+Ptrans = matrix(c(0), 3, 3)
+colnames(Ptrans) = strlist[[1]]
+rownames(Ptrans) = strlist[[1]]
+
+for (i in 1:ntrain){
+  struc = strsplit(df$sst3[i],"")
+  pos1  = which(struc[[1]][1] == strlist[[1]])
+  for (j in 2:lseq){
+    pos2 = which(struc[[1]][j] == strlist[[1]])
+    Ptrans[pos1,pos2] = Ptrans[pos1,pos2] + 1
+    pos1 = pos2
+  }
+}
+
+Ptrans = Ptrans/rowSums(Ptrans)
+Ptrans
+
+# Vector de probabilidades inicial
+Pini = rep(0, 3)
+names(Pini) = strlist[[1]]
+
+for (i in 1:ntrain){
+  struct = strsplit(dftrain$sst3[i],"")
+  idx = which(struct[[1]][1] == strlist[[1]])
+  Pini[idx] = Pini[idx]+1
+}
+
+Pini = Pini/sum(Pini)
+Pini
+```
+
+
+## Ejercicio 7: Predicción de una estructura secundaria
+```{r}
+# Observación del conjunto de validación
+o = sample(ntest, 1)
+obs = strsplit(dftest[o,]$seq, '')
+
+# Viterbi
+source('myviterbi.R')
+
+struct = myviterbi(emission, Ptrans, Pini, obs[[1]])
+
+struct
+dftest[o,]$sst3
+```
+
+
+## Ejercicio 8: Matriz de confusión y tasa de error
+```{r}
+# Definición de la matriz de confusión
+confussion_total = matrix(c(0), nsta, nsta)
+colnames(confussion_total) = strlist[[1]]
+rownames(confussion_total) = strlist[[1]]
+
+for (i in 1:ntest){
+
+  obs_seq = strsplit(dftest[i,]$seq, '')  # Secuencia de la observación actual
+  obs_str = strsplit(dftest[i,]$sst3, '') # Estructura de la observación actual
+  
+  struct = myviterbi(emission, Ptrans, Pini, obs_seq[[1]]) # Predicción de la estructura: 
+                                                           # devuelve 1,2,3 en vez de C,E,H
+  # Sustituir 1,2,3 por C,E,H
+  struct = gsub('1', 'C', struct)
+  struct = gsub('2', 'E', struct)
+  struct = gsub('3', 'H', struct)
+
+  confussion_this = table(struct, obs_str[[1]]) # Matriz de confusión de esta secuencia
+
+  # Sumar esta matriz de confusión a la total
+  for(j in rownames(confussion_this)){
+    for(k in colnames(confussion_this)){
+      confussion_total[j, k] = confussion_total[j, k] + confussion_this[j, k]
+    }
+  }
+}
+
+confussion_total
+```
+
+```{r}
+tasa_error = sum(sum(confussion_total-diag(diag(confussion_total))))/sum(colSums(confussion_total))
+
+tasa_error
+```
+
+
+# Ejercicios extra
+```{r}
+seq = rep(0, 10)
+Pi = c(0.6, 0.4) # vector de probabilidad inicial
+Pt = matrix(c(0.6,0.4,0.3,0.7), 2, 2, byrow = TRUE) # matriz de transición
+Pn = matrix(c(0),2,2) # Pi * Pt
+
+for(i in 1:length(seq)){ # para cada posición de la secuencia
+  
+  # Crear una matriz: Pi*Pt
+  for(j in 1:nrow(Pt)){
+    for(k in 1:ncol(Pt)){
+      Pn[j,k] = Pi[j] * Pt[j,k]
+    }
+  }
+  
+  
+}
+```

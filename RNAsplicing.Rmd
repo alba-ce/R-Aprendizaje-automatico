@@ -1,0 +1,239 @@
+---
+title: "Práctica 1: DNA splicing"
+output: html_document
+---
+Alba Cerro Monje
+
+Alejandro Moreno Diaz
+
+Arturo Redondo Luque
+
+### Ejemplo 1: Obtención de las secuencias
+```{r}
+dfall <- read.csv("data.txt")
+dfall = data.frame('Class' = dfall$Class, 'Sequence' = dfall$Sequence) # Filtramos columna Instance
+dfall[] <- lapply(dfall,as.character) 
+mall = nrow(dfall) # Número de instancias
+
+str(dfall)
+```
+
+
+### Ejemplo 2: Pre-procesado de las secuencias
+```{r}
+toRemove <- c() # Vector con las posiciones que queremos eliminar
+j <- 1
+for (i in 1:mall){
+  enes  <- lapply(strsplit(dfall[i,2], ""), function(x) which(x == "N"))
+  des   <- lapply(strsplit(dfall[i,2], ""), function(x) which(x == "D"))
+  eses  <- lapply(strsplit(dfall[i,2], ""), function(x) which(x == "S"))
+  erres <- lapply(strsplit(dfall[i,2], ""), function(x) which(x == "R"))
+  
+  if (length(enes[[1]])>0 || length(des[[1]])>0 || length(eses[[1]])>0 || length(erres[[1]])>0){
+    toRemove[j] <- i
+    j <- j+1
+  }
+}
+
+dfall <- dfall[-toRemove,]
+mall <- nrow(dfall) # Número de instancias despues del filtrado
+mall
+```
+
+
+### Ejercicio 1: Creación de los conjuntos de entrenamiento y de validación
+```{r}
+sample_training = sample(mall, 0.7*mall, replace = FALSE)
+training = dfall[sample_training,]
+test = dfall[-sample_training,]
+
+table(training$Class)
+table(test$Class)
+```
+
+
+### Ejemplo 3: Estimación de la verosimilitud
+```{r}
+prob <- rep(0,60)
+m = nrow(training)
+# Read the training set. Count the frequency of base A in each position for all sequences classified as IE
+# m is the number of sequences in the training set
+# The dataframe df refers to the training set
+for (i in 1:m){
+  if (training[i,1]=="EI"){
+    aes <- lapply(strsplit(training[i,2], ""), function(x) which(x == "A"))
+    prob[aes[[1]]] <- prob[aes[[1]]] + 1
+  }
+}
+
+prob
+```
+
+### Ejercicio 2: Fase de entrenamiento del clasificador
+
+Probabilidad a priori de cada clase.
+```{r}
+total = nrow(training)
+
+n_ei = nrow(subset(training, Class == 'EI')) # Número de secuencias de la clase EI
+n_ie = nrow(subset(training, Class == 'IE')) # Número de secuencias de la clase IE
+n_n  = nrow(subset(training, Class == 'N'))  # Número de secuencias de la clase N
+
+p_priori = c(n_ei/total, n_ie/total, n_n/total) 
+p_priori
+```
+
+
+Frecuencia de cada base en cada posición por cada clase.
+```{r}
+probabilidades = function(clase, total){
+  # Esta función crea un dataframe con las probabilidades de cada base en cada posición para una clase
+  df = data.frame(A = rep(0, 60), T = rep(0, 60), C = rep(0, 60), G = rep(0, 60))
+  m = nrow(training)
+  for (i in 1:m){
+    if (training[i,1] == clase){
+        aes <- lapply(strsplit(training[i,2], ""), function(x) which(x == "A"))
+        tes <- lapply(strsplit(training[i,2], ""), function(x) which(x == "T"))
+        ces <- lapply(strsplit(training[i,2], ""), function(x) which(x == "C"))
+        ges <- lapply(strsplit(training[i,2], ""), function(x) which(x == "G"))
+  
+        df$A[aes[[1]]] <- df$A[aes[[1]]] + 1
+        df$T[tes[[1]]] <- df$T[tes[[1]]] + 1
+        df$C[ces[[1]]] <- df$C[ces[[1]]] + 1
+        df$G[ges[[1]]] <- df$G[ges[[1]]] + 1
+    }
+  }
+  df$A = df$A/total
+  df$T = df$T/total
+  df$C = df$C/total
+  df$G = df$G/total
+  
+  return(df)
+}
+
+EI = probabilidades('EI', n_ei)
+IE = probabilidades('IE', n_ie)
+N  = probabilidades('N' , n_n)
+
+str(EI)
+str(IE)
+str(N)
+```
+
+
+
+
+### Ejercicio 3: Representación gráfica
+```{r}
+pos = seq(1,60,1)
+
+plot(EI$A ~ pos, xlab = 'Posicion', ylab = 'Probabilidad', main = 'Clase EI', ylim = c(0,1))
+points(EI$T ~ pos, col = 'green')
+points(EI$C ~ pos, col = 'red')
+points(EI$G ~ pos, col = 'blue')
+legend('topright', c('A', 'T', 'C', 'G'), col = c('black', 'green', 'red', 'blue'), lwd = 1)
+
+
+plot(IE$A ~ pos, xlab = 'Posicion', ylab = 'Probabilidad', main = 'Clase IE', ylim = c(0,1))
+points(IE$T ~ pos, col = 'green')
+points(IE$C ~ pos, col = 'red')
+points(IE$G ~ pos, col = 'blue')
+legend('topright', c('A', 'T', 'C', 'G'), col = c('black', 'green', 'red', 'blue'), lwd = 1)
+
+
+plot(N$A ~ pos, xlab = 'Posicion', ylab = 'Probabilidad', main = 'Clase N', ylim = c(0,1))
+points(N$T ~ pos, col = 'green')
+points(N$C ~ pos, col = 'red')
+points(N$G ~ pos, col = 'blue')
+legend('topright', c('A', 'T', 'C', 'G'), col = c('black', 'green', 'red', 'blue'), lwd = 1)
+```
+
+
+En la *clase EI*, en un entorno cercano a la base 30:
+
+- hay una GT altamente conservada 
+
+- hay una alta frecuencia de A y C
+
+- hay una baja frecuencia de C y T (excepto la conservada)
+
+Fuera de esta zona las bases tienen una frecuencia entorno a 0.25
+
+
+En la *clase IE*, entorno a la base 30:
+
+- hay un par AG altamente conservado
+
+- hay una C conservada
+
+A la izquierda de esta zona vemos prevalencia de las bases T y C frente a las bases A y G. 
+Por otro lado, a la derecha de esa zona todas las bases tienen uan probabilidad cercana a 0.25. 
+
+En la *clase N*, no hay prevalencia de ninguna base, todas las bases tienen una probabilidad 0.25 en toda la secuencia. 
+
+
+
+### Ejercicio 4: Fase de clasificación
+```{r}
+num_assigned_class = rep(0, nrow(test)) # Clases asignadas -> cada clase es un número
+assigned_class = rep(0, nrow(test))     # Clases asignadas -> cada clase lleva su nombre
+
+
+for (i in 1:nrow(test)){ # Para cada observación del test
+  obs = test[i,2] # secuencia de esa observación
+
+  p_obs = c(0, 0, 0) # probabilidad de la observación obs para cada clase
+  
+  for (j in 1:3){ # Para cada clase
+    p = 0
+    seq = strsplit(obs, '')
+
+    if(j == 1){df = EI}
+    else if (j == 2) {df = IE}
+    else {df = N}
+
+    for (k in 1:60){ # Para cada atributo
+      base = seq[[1]][k]
+      if(base == 'A'){p = p + log(df$A[k])}
+      else if (base == 'T'){p = p + log(df$T[k])}
+      else if (base == 'C'){p = p + log(df$C[k])}
+      else {p = p + log(df$G[k])}
+    }
+    
+    p_obs[j] = p + log(p_priori[j])
+  }
+  
+  num_assigned_class[i] = which.max(p_obs)
+}
+
+
+for(h in 1:length(num_assigned_class)){
+  if (num_assigned_class[h] == 1){
+    assigned_class[h] = 'EI'
+  } else if (num_assigned_class[h] == 2){
+    assigned_class[h] = 'IE'
+  } else {
+    assigned_class[h] = 'N'
+  }
+}
+
+table(assigned_class)
+```
+
+
+### Ejercicio 5: Matriz de confusión y tasa de error
+Matriz de confusión
+```{r}
+real_class = test$Class
+confusion = table(real_class, assigned_class, dnn = list('actual', 'predicted'))
+
+confusion
+```
+
+Tasa de error
+```{r}
+tasa_error = sum(sum(confusion-diag(diag(confusion))))/sum(colSums(confusion))
+
+tasa_error
+```
+Consideramos que una tasa de error menos del 5%, como es el caso, es aceptable. Por lo tanto, consideramos que es un buen clasificador.

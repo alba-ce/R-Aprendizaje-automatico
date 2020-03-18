@@ -1,0 +1,234 @@
+---
+title: "Práctica 2 - Agrupamiento por rasgos funcionales en semillas de trigo"
+output:
+  html_document:
+    df_print: paged
+---
+
+Alba Cerro Monje
+
+Alejandro Moreno Díaz
+
+Arturo Redondo Luque
+
+## Ejercicio 1: Conjunto de datos 
+```{r}
+seeds = read.csv('seeds.csv')
+
+str(seeds)
+```
+
+
+## Ejemplo 1: Grupos con K-means
+```{r}
+seeds_km <- kmeans(seeds[-8], centers = 3, nstart = 20)
+seeds_km
+
+# Matriz de confusión
+table(seeds_km$cluster, seeds$species_class)
+```
+
+## Ejemplo 2: Representación gráfica
+```{r}
+library(cluster)
+
+clusplot(seeds[-8], seeds_km$cluster, main='2D PCA representation',
+         color=FALSE, shade=FALSE, labels=4, lines=0,
+         col.p = seeds_km$cluster, col.clu = 1, plotchar = FALSE, pch = 19)
+```
+
+## Ejercicio 2: Estandarización de los datos
+```{r}
+# Marco de datos estandarizados
+seeds_std = seeds[-8]
+for (i in 1:7){
+  seeds_std[,i] = scale(seeds[,i])
+}
+
+head(seeds_std)
+
+# K means
+seeds_std_km = kmeans(seeds_std, centers = 3, nstart = 20)
+seeds_std_km
+
+# Matriz de confusión
+table(seeds_std_km$cluster, seeds$species_class)
+```
+Dado que hay menos errores, podemos decir que la estandarización mejora el clustering. 
+
+## Ejemplo 3: Índices de variación
+```{r}
+library(fpc)
+
+# Calculamos las distancias
+seeds_dist = dist(seeds[-8], method = "euclidean")
+
+# Calculamos las medidas de eficiencia
+clust_stats <- cluster.stats(d = seeds_dist, seeds$species_class, seeds_km$cluster)
+clust_stats$corrected.rand
+clust_stats$vi
+```
+
+## Ejercicio 3: Validacion externa de los datos estandarizados
+```{r}
+# Calculamos las distancias
+seeds_std_dist = dist(seeds_std[-8], method = "euclidean")
+
+# Calculamos las medidas de eficiencia
+clust_std_stats <- cluster.stats(d = seeds_std_dist, seeds$species_class, seeds_std_km$cluster)
+clust_std_stats$corrected.rand
+clust_std_stats$vi
+```
+El coeficiente de Rand es ligeramente mayor, mientras que el coeficiente de VI es ligeramente menor. Esto confirma que, como dijimos en el ejercicio anterior, la estandarización de los datos mejora el clustering. 
+
+## Ejercicio 4: Estimación del número de grupos mediante un diagrama de codo
+```{r}
+Q_intra = rep(0,7)
+Q_inter = rep(0,7)
+
+for (i in 1:7){
+  km = kmeans(seeds_std, centers = i, nstart = 20)
+  
+  Q_intra[i] = km$tot.withinss / km$totss
+  Q_inter[i] = km$betweens / km$totss
+}
+
+plot(c(1:7), Q_intra, type = 'b', main = 'Diagrama de codo', ylab = 'Q', xlab = 'K', col = 'blue')
+lines(c(1:7), Q_inter, col = 'red', type = 'b')
+legend('topright', c('Dentro de los grupos', 'Entre los grupos'), col = c('blue', 'red'), lwd = 1)
+```
+
+El número óptimo de grupos parece ser 3, ya que a partir de K = 3 se estabilizan tanto la variabilidad dentro como entre los grupos.
+
+## Ejemplo 4: Estimación de K mediante BIC
+```{r}
+library(mclust)
+seeds_clust <- mclustBIC(as.matrix(seeds_std), G=1:15)
+seeds_clust
+```
+El método con una mayor verosimilitud es EEV,4 (4 grupos).
+
+
+## Ejemplo 5: Métodos jerárquicos
+```{r}
+# Asignamos los grupos de forma jerárquica, uniendo datos dos a dos
+seeds_single = hclust(seeds_std_dist, method = "single")
+
+# Cortamos el dendograma en K=3 grupos.
+groups_single = cutree(seeds_single, k = 3)
+
+# Representamos el dendograma
+plot(seeds_single)
+
+# Marcamos cada grupo en el dendograma
+rect.hclust(seeds_single, k = 3, border=2:4)
+
+# Comparamos con la clasificación inicial
+seeds_single_stats <- cluster.stats(d = seeds_std_dist, seeds$species_class, groups_single)
+seeds_single_stats$corrected.rand
+
+table(groups_single,seeds$species_class,dnn=list("single","actual"))
+```
+
+
+## Ejercicio 5: Encadenamiento completo
+```{r}
+# Asignamos los grupos de forma jerárquica, uniendo datos dos a dos
+seeds_complete = hclust(seeds_std_dist, method = "complete")
+
+# Cortamos el dendograma en K=3 grupos.
+groups_complete = cutree(seeds_complete, k = 3)
+
+# Representamos el dendograma
+plot(seeds_complete)
+
+# Marcamos cada grupo en el dendograma
+rect.hclust(seeds_complete, k = 3, border=2:4)
+
+# Comparamos con la clasificación inicial
+seeds_complete_stats <- cluster.stats(d = seeds_std_dist, seeds$species_class, groups_complete)
+seeds_complete_stats$corrected.rand
+
+table(groups_complete,seeds$species_class,dnn=list("complete","actual"))
+```
+ 
+ 
+## Ejercicio 6: Comparación de agrupamientos
+El método single no es un buen método ya que asigna 3 grupos, de los cuales dos tienen solo una observación. Como vemos en el índice de Rand y en la matriz de confusión, no hay apenas similitud entre la clasificación real y la proporcionada por este método. 
+
+Por otro lado, el método complete, en comparación con el método single, mejora notablemente el índice de Rand, que se hace más próximo a 1, así como la matriz de confusión, de modo que la clasificación se parece en mayor medida a la validación externa.
+
+## Ejercicio 7: Comparación con K-means
+El índice de Rand de K-means con datos estandarizados es mayor que el del método por agrupamiento por vecinos lejanos. Es decir, ese método es mejor, ya que se ajusta más a la clasificación real. 
+
+Por otro lado, el de K-means sobre los datos sin estandarizar es casi igual de bueno que el método por agrupamiento. 
+
+## Ejercicio 8: Método Ward
+```{r}
+# Asignamos los grupos de forma jerárquica, uniendo datos dos a dos
+seeds_ward = hclust(seeds_std_dist, method = "ward.D2")
+
+# Cortamos el dendograma en K=3 grupos.
+groups_ward = cutree(seeds_ward, k = 3)
+
+# Representamos el dendograma
+plot(seeds_ward)
+
+# Marcamos cada grupo en el dendograma
+rect.hclust(seeds_ward, k = 3, border=2:4)
+
+# Comparamos con la clasificación inicial
+seeds_ward_stats <- cluster.stats(d = seeds_std_dist, seeds$species_class, groups_ward)
+seeds_ward_stats$corrected.rand
+
+table(groups_ward,seeds$species_class,dnn=list("ward","actual"))
+```
+Este es el mejor método estudiado hasta el momento. Tiene un índice de Rand superior al K-means estandarizado. 
+
+
+## Ejercicios extra
+### Ejercicio 1: Índices de Rand y VI variando K 
+```{r}
+rand = rep(0, 7)
+vi = rep(0,7)
+
+for(k in 1:7){
+  seeds_km = kmeans(seeds_std, centers = k, nstart = 20)
+  
+  seeds_dist = dist(seeds_std, method = "euclidean")
+  clust_stats = cluster.stats(d = seeds_dist, seeds$species_class,
+                                     seeds_km$cluster)
+  rand[k] = clust_stats$corrected.rand
+  vi[k] = clust_stats$vi
+}
+
+plot(vi~c(1:7), type = 'b', col = 'blue', ylim = c(0,1.7), xlab = 'K', ylab = 'Índice')
+points(rand~c(1:7), type = 'b', col = 'red')
+legend('topright', c('Rand', 'VI'), col = c('red', 'blue'), lwd = 1)
+```
+El número optimo de grupos es K = 3, ya que maximiza el valor del índice de Rand y minimiza el del índice de VI. 
+
+### Ejercicio 2: Robustez de los datos la no tener en cuenta la compactividad
+```{r}
+seeds_extra = seeds[-3] # Datos sin compactividad
+
+# Estandarizar
+for (i in 1:ncol(seeds_extra)){
+  seeds_extra[,i] = scale(seeds_extra[,i])
+}
+
+# Kmeans
+seeds_extra_km = kmeans(seeds_extra[-8], centers = 3, nstart = 20)
+table(seeds_extra_km$cluster, seeds$species_class)
+
+seeds_extra_dist = dist(seeds_extra, method = "euclidean")
+clust_extra_stats = cluster.stats(d = seeds_extra_dist, seeds$species_class,
+                                   seeds_extra_km$cluster)
+clust_extra_stats$corrected.rand
+clust_extra_stats$vi
+```
+La clasificación obtenida es mejor que la anterior, ya que: 
+
+- Se obtiene un valor para el índice de Rand y el de VI mejor que en el ejercicio 3. 
+
+- Comparando las tablas de confusión, vemos que en este caso hay menos errores a la hora de asignar grupos. 
