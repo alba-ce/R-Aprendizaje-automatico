@@ -219,22 +219,98 @@ tasa_error
 ```
 
 
-# Ejercicios extra
-```{r}
-seq = rep(0, 10)
-Pi = c(0.6, 0.4) # vector de probabilidad inicial
-Pt = matrix(c(0.6,0.4,0.3,0.7), 2, 2, byrow = TRUE) # matriz de transición
-Pn = matrix(c(0),2,2) # Pi * Pt
+## Ejercicio extra
 
-for(i in 1:length(seq)){ # para cada posición de la secuencia
-  
+En primer lugar calculamos los parámetros necesarios de la cadena de markov: vector inicial de probabilidades y matriz de transiciones
+```{r}
+# Vector inicial de probabilidades
+Pi = rep(0,lalp)
+names(Pi) = alphabet[[1]]
+
+for (i in 1:nseq){
+  seque <- strsplit(df$seq[i],"")
+  idx = which(seque[[1]][1] == alphabet[[1]])
+  Pi[idx] = Pi[idx]+1
+}
+
+Pi = Pi/nseq
+Pi
+
+
+
+# Matriz de transiciones
+Pt = matrix(0, ncol=lalp, nrow=lalp)
+colnames(Pt) = alphabet[[1]]
+rownames(Pt) = alphabet[[1]]
+
+for (i in 1:nseq){
+  seque = strsplit(df$seq[i],"")
+  pos1 = which(seque[[1]][1]==alphabet[[1]])
+  for (j in 2:lseq){
+    pos2 = which(seque[[1]][j]==alphabet[[1]])
+    Pt[pos1,pos2] <- Pt[pos1,pos2]+1
+    pos1 = pos2
+  }
+}
+
+Pt = Pt/rowSums(Pt)
+Pt
+
+
+# Secuencia de máxima verosimilitud
+seq = rep(0, 20) 
+
+# Nueva matriz Pi*Pt
+Pn = matrix(c(0), lalp, lalp)
+colnames(Pn) = alphabet[[1]]
+rownames(Pn) = alphabet[[1]]
+
+# Tomamos logaritmos
+Pi = log(Pi)
+Pt = log(Pt)
+
+# Búsqueda de la secuencia de máxima verosimilitud
+v = Pi
+for(i in 1:length(seq)){
   # Crear una matriz: Pi*Pt
   for(j in 1:nrow(Pt)){
     for(k in 1:ncol(Pt)){
-      Pn[j,k] = Pi[j] * Pt[j,k]
+      Pn[j,k] = v[j] + Pt[j,k]
     }
   }
   
+  # Siguiente letra en la secuencia
+  masProbable = which(max(Pn) == Pn, arr.ind = TRUE) # índices del elemento mayor de la matriz Pn
+  seq[i] = names(v)[masProbable[1]] # el 2 indice (filas) indica la letra que elegimos
   
+  # Actualizamos vector de probabilidad
+  v = Pn[masProbable[1],]
 }
+
+seq
 ```
+
+
+Cálculo de la verosimilitud:
+```{r}
+myloglik = function(Pini,Ptrans,alphabet,observation){
+  lobs = length(observation)
+  pos1 = which(observation[1] == alphabet)
+  loglik = Pini[pos1]
+  for (i in 2:lobs){
+    pos2 = which(observation[i] == alphabet)
+    loglik = loglik+Ptrans[pos1,pos2]
+    pos1 = pos2
+  }
+  return(loglik)
+}
+
+myloglik(Pi, Pt, alphabet[[1]], seq)
+myloglik(Pi, Pt, alphabet[[1]], strsplit('SEQWENCIAVERQSMILYES','')[[1]])
+myloglik(Pi, Pt, alphabet[[1]], strsplit('FVCQHLVCQHLVCQHLVCQQ','')[[1]])
+
+```
+
+Podemos observar que se repite el patrón GER porque las transiciones G->E, E->R y R->G son las más probable. Es curioso que la secuencia más probable contenga estos aminoácidos pese a no ser los más frecuentes en la distribución empírica ni en la de equilibrio.
+
+Por otro lado, la secuencia obtenida tiene una log-verosimilitud mucho mayor que la de las otras secuencias. 
