@@ -1,7 +1,7 @@
 # R-Aprendizaje-automatico
 
 En este repositorio se encuentran los trabajos realizados por Alba Cerro, Alejandro Moreno y Arturo Redondo 
-de la asignatura de Aprendizaje automático. Dentro de los trabajos hay secciones de ejemplos dados por el profesor y secciones de ejercicios realizados por los alumnos anteriormente mencionados.
+de la asignatura de Aprendizaje Automático. Dentro de los trabajos hay secciones de ejemplos dados por el profesor y secciones de ejercicios realizados por los alumnos anteriormente mencionados.
 
 El archivo seeds.Rmd contiene una serie de ejercicios donde se aplican distintos métodos de clasificación de las distintas variedades de la planta Iris.
 
