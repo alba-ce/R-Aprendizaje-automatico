@@ -1,0 +1,219 @@
+---
+title: "Redes Neuronales"
+author: "Alba"
+date: "31/3/2020"
+output: html_document
+---
+
+## Ejemplo 1: Cargar los datos
+```{r}
+datawine = read.csv("wine.csv",header=FALSE)
+
+colnames(datawine) = c("Cultivars", "Alcohol", "Malic_acid", "Ash", "Alcalinity_of_ash",
+                       "Magnesium", "Total_phenols", "Flavanoids", "Nonflavanoid_phenols",
+                       "Proanthocyanins", "Color_intensity", "Hue", "OD280_OD315", "Proline")
+head(datawine)
+summary(datawine)
+```
+
+Normalizamos los datos:
+```{r}
+normalize = function(x)  {
+  return((x - min(x)) / (max(x)-min(x)))
+}
+
+maxmindf = as.data.frame(lapply(datawine,normalize))
+head(maxmindf)
+```
+
+
+## Ejemplo 2: Cargar los paquetes
+```{r}
+library(neuralnet)
+library(nnet)
+library(NeuralNetTools)
+```
+
+
+## Ejercicio 1: Conjunto de entrenamiento y de validación
+```{r}
+wine_sample = sample(nrow(maxmindf), 0.7*nrow(datawine), replace = FALSE)
+wine_train  = maxmindf[ wine_sample,]
+wine_test   = maxmindf[-wine_sample,]
+```
+
+
+## Ejercicio 2a: Construcción y entrenamiento de la red neuronal
+Input: alcohol y flavonoids
+Dos capas ocultas de 2 y 4 neuronas
+```{r}
+nn = neuralnet((Cultivars == 0) + (Cultivars == 0.5) + (Cultivars == 1) ~Alcohol+Flavanoids, data=wine_train, hidden = c(2,4), linear.output = FALSE)
+
+nn$result.matrix
+plotnet(nn)
+```
+
+## Ejercicio 2b: Fase de validación
+```{r}
+wine_test_sub = data.frame(Alcohol = wine_test[,2], Flavanoids = wine_test[,8])
+
+pred = predict(nn, wine_test_sub)
+
+# Matriz de contingencia
+confussion = table(actual = wine_test$Cultivars, prediction = apply(pred, 1, which.max))
+rownames(confussion) = c(1,2,3)
+confussion
+
+tasa_error = sum(sum(confussion-diag(diag(confussion))))/sum(colSums(confussion))
+tasa_error
+```
+
+
+## Ejercicio 3: Estudio del efecto de la consideración de otros atributos en la clasificación
+```{r}
+# Fase de entrenamiento
+nn = neuralnet((Cultivars == 0) + (Cultivars == 0.5) + (Cultivars == 1) ~Alcohol+Flavanoids+Malic_acid+Total_phenols, data=wine_train, 
+               hidden = c(4,6), linear.output = FALSE)
+
+plotnet(nn)
+
+
+# Fase de validación
+wine_test_sub = data.frame(Alcohol = wine_test[,2], Flavanoids = wine_test[,8], Malic_acid = wine_test[,3], Total_phenols = wine_test[,7])
+
+pred = predict(nn, wine_test_sub)
+
+
+# Matriz de contingencia
+confussion = table(actual = wine_test$Cultivars, prediction = apply(pred, 1, which.max))
+rownames(confussion) = c(1,2,3)
+confussion
+
+tasa_error = sum(sum(confussion-diag(diag(confussion))))/sum(colSums(confussion))
+tasa_error
+```
+Al añadir estos campos el modelo empeora. Esto se puede deber a que al menos una de estas dos variables está repartida de forma demasiado homogénea entre los cultivares. Sin embargo hemos repetido el proceso de entrenamiento con 2 y 4 neuronas en las capas ocultas y hemos obtenido una tasa de error similar a la del ejercicio 2. Esto nos hace pensar que el error puede deberse al aumento en el número de neuronas en las hidden layers. 
+
+## Ejercicio 4
+```{r}
+# Fase de entrenamiento
+nn = neuralnet((Cultivars == 0) + (Cultivars == 0.5) + (Cultivars == 1) ~ Alcohol + Malic_acid + Ash+ 
+                 Alcalinity_of_ash + Magnesium + Total_phenols + Flavanoids + Nonflavanoid_phenols + 
+                 Proanthocyanins + Color_intensity + Hue + OD280_OD315 + Proline, 
+               data = wine_train, hidden = c(4,6), linear.output = FALSE, act.fct = "logistic")
+
+plotnet(nn)
+
+
+# Fase de validación
+wine_test_sub = wine_test[,2:14]
+
+pred = predict(nn, wine_test_sub)
+
+
+#Matriz de contingencia
+confussion = table(actual = wine_test$Cultivars, prediction = apply(pred, 1, which.max))
+rownames(confussion) = c(1,2,3)
+confussion
+
+tasa_error = sum(sum(confussion-diag(diag(confussion))))/sum(colSums(confussion))
+tasa_error
+```
+Hemos creado una topología con 2 capas ya que consideramos que, como recomiendan muchas fuentes, con un training set con un número de datos tan bajo, un número mayor de capas puede ser contraproducente. 
+
+Una vez decidido el número de capas, hemos probado varias combinaciones de números de neuronas y hemos encontrado que esta es la que da una menor tasa de error.
+
+
+## Ejercicio extra: 
+````{r}
+# Cargamos los datos
+dfall = read.csv("DNA.txt")
+dfall = data.frame('Class' = dfall$Class, 'Sequence' = dfall$Sequence) # Filtramos columna Instance
+dfall[] = lapply(dfall,as.character) 
+
+# Eliminamos secuencias con N, S, R,...
+toRemove <- c() # Vector con las posiciones que queremos eliminar
+j <- 1
+for (i in 1:mall){
+  enes  <- lapply(strsplit(dfall[i,2], ""), function(x) which(x == "N"))
+  des   <- lapply(strsplit(dfall[i,2], ""), function(x) which(x == "D"))
+  eses  <- lapply(strsplit(dfall[i,2], ""), function(x) which(x == "S"))
+  erres <- lapply(strsplit(dfall[i,2], ""), function(x) which(x == "R"))
+  
+  if (length(enes[[1]])>0 || length(des[[1]])>0 || length(eses[[1]])>0 || length(erres[[1]])>0){
+    toRemove[j] <- i
+    j <- j+1
+  }
+}
+
+dfall <- dfall[-toRemove,]
+
+# Preparación de los datos -> necesitamos que cada nucleotido esté en una columna distinta
+data = data.frame(matrix(c(0), 0, 61))
+names_nt = rep(0, 60)
+for(i in 1:60){
+  names_nt[i] = paste('Nt', i, sep = '')
+}
+names = c('Clase', names_nt)
+
+names(data) = names
+
+for(i in 1:nrow(dfall)){
+  seq = strsplit(dfall$Sequence[i], '')[[1]]
+  seq = gsub('A', 0   , seq)
+  seq = gsub('T', 0.33, seq)
+  seq = gsub('C', 0.67, seq)
+  seq = gsub('G', 1   , seq)
+
+  if(dfall$Class[i] == 'EI'){
+    ahora = c(0, seq)
+  } else if(dfall$Class[i] == 'IE'){
+    ahora = c(0.5, seq)
+  } else {
+    ahora = c(1, seq)
+  }
+  
+  data[i,] = ahora
+}
+
+data[] = lapply(data,as.numeric) 
+head(data)
+
+
+# Necesitamos que los valores sean numéricos
+# Clases: EI -> 0, IE -> 0.5, N -> 1
+# Nucleótidos: A -> 0, T -> 0.3, C -> 0.6, G -> 1
+
+````
+
+
+````{r}
+# Conjunto de validación y entrenamiento
+sample = sample(nrow(data), 0.7*nrow(data), replace = FALSE)
+train = data[ sample,]
+test  = data[-sample,]
+
+# Construccion de la red neuronal
+nn = neuralnet((Clase == 0) + (Clase == 0.5) + (Clase == 1) ~ Nt1+ Nt2+ Nt3+ Nt4+ Nt5+ Nt6+ Nt7+ Nt8+ Nt9+
+                 Nt10+ Nt11+ Nt12+ Nt13+ Nt14+ Nt15+ Nt16+ Nt17+ Nt18+ Nt19+ Nt20+ Nt21+ Nt22+ Nt23+ Nt24+ Nt25+
+                 Nt26+ Nt27+ Nt28+ Nt29+ Nt30+ Nt31+ Nt32+ Nt33+ Nt34+ Nt35+ Nt36+ Nt37+ Nt38+ Nt39+ Nt40+ Nt41+
+                 Nt42+ Nt43+ Nt44+ Nt45+ Nt46+ Nt47+ Nt48+ Nt49+ Nt50+ Nt51+ Nt52+ Nt53+ Nt54+ Nt55+ Nt56+ Nt57+
+                 Nt58+ Nt59+ Nt60,
+               data = train, hidden = c(31,12), linear.output = FALSE, act.fct = "logistic")
+
+plotnet(nn)
+nn$result.matrix
+````
+
+```{r}
+test_sub = test[,2:61]
+
+pred = predict(nn, test_sub)
+
+confussion = table(actual = test$Clase, prediction = apply(pred, 1, which.max))
+rownames(confussion) = c(1,2,3)
+confussion
+
+tasa_error = sum(sum(confussion-diag(diag(confussion))))/sum(colSums(confussion))
+tasa_error
+```
