@@ -131,10 +131,13 @@ dfall = read.csv("DNA.txt")
 dfall = data.frame('Class' = dfall$Class, 'Sequence' = dfall$Sequence) # Filtramos columna Instance
 dfall[] = lapply(dfall,as.character) 
 
+
+
+
 # Eliminamos secuencias con N, S, R,...
 toRemove <- c() # Vector con las posiciones que queremos eliminar
 j <- 1
-for (i in 1:mall){
+for (i in 1:nrow(dfall)){
   enes  <- lapply(strsplit(dfall[i,2], ""), function(x) which(x == "N"))
   des   <- lapply(strsplit(dfall[i,2], ""), function(x) which(x == "D"))
   eses  <- lapply(strsplit(dfall[i,2], ""), function(x) which(x == "S"))
@@ -148,41 +151,56 @@ for (i in 1:mall){
 
 dfall <- dfall[-toRemove,]
 
-# Preparación de los datos -> necesitamos que cada nucleotido esté en una columna distinta
-data = data.frame(matrix(c(0), 0, 61))
-names_nt = rep(0, 60)
+
+
+
+# Preparación de los datos 
+#   Necesitamos que los valores sean numéricos
+#   Clases: EI -> 0, IE -> 0.5, N -> 1
+#   Nucleótidos: cada posición del genoma está codificada por cuatro columnas (Nti-A, Nti-T, Nti-Cy Nti-G). 
+#     si por ejemplo en una posición hay una A: 1 0 0 0 
+
+data = data.frame(matrix(c(0), 0, 241))
+names = c('Clase')
 for(i in 1:60){
-  names_nt[i] = paste('Nt', i, sep = '')
+  for(j in c('A', 'T', 'C', 'G')){
+    names = append(names, paste('Nt', i, j, sep = ''))
+  }
 }
-names = c('Clase', names_nt)
 
 names(data) = names
 
-for(i in 1:nrow(dfall)){
-  seq = strsplit(dfall$Sequence[i], '')[[1]]
-  seq = gsub('A', 0   , seq)
-  seq = gsub('T', 0.33, seq)
-  seq = gsub('C', 0.67, seq)
-  seq = gsub('G', 1   , seq)
 
-  if(dfall$Class[i] == 'EI'){
-    ahora = c(0, seq)
-  } else if(dfall$Class[i] == 'IE'){
-    ahora = c(0.5, seq)
-  } else {
-    ahora = c(1, seq)
-  }
-  
-  data[i,] = ahora
+conversor_class = function(x){
+  switch(x, 
+         'EI' = 0,
+         'IE' = 0.5,
+         'N'  = 1,
+  )
 }
 
-data[] = lapply(data,as.numeric) 
+
+conversor_seq = function(x){
+  switch (x,
+    'A' = c(1,0,0,0),
+    'T' = c(0,1,0,0),
+    'C' = c(0,0,1,0),
+    'G' = c(0,0,0,1)
+  )
+}
+
+
+for(i in 1:nrow(dfall)){
+strNumber = c(conversor_class(dfall$Class[i])) 
+listadeletras = strsplit(dfall$Sequence[i], '')[[1]]
+  for(j in 1:length(listadeletras)){
+    strNumber = c(strNumber, conversor_seq(listadeletras[j]))
+  }
+  data[i,] = strNumber
+}
+
+data[] = lapply(data, as.numeric)
 head(data)
-
-
-# Necesitamos que los valores sean numéricos
-# Clases: EI -> 0, IE -> 0.5, N -> 1
-# Nucleótidos: A -> 0, T -> 0.3, C -> 0.6, G -> 1
 
 ````
 
@@ -193,20 +211,22 @@ sample = sample(nrow(data), 0.7*nrow(data), replace = FALSE)
 train = data[ sample,]
 test  = data[-sample,]
 
+formula = as.formula(paste(
+  '(Clase == 0) + (Clase == 0.5) + (Clase == 1) ~ ',
+  paste(names(train), collapse = '+')
+))
+
+
 # Construccion de la red neuronal
-nn = neuralnet((Clase == 0) + (Clase == 0.5) + (Clase == 1) ~ Nt1+ Nt2+ Nt3+ Nt4+ Nt5+ Nt6+ Nt7+ Nt8+ Nt9+
-                 Nt10+ Nt11+ Nt12+ Nt13+ Nt14+ Nt15+ Nt16+ Nt17+ Nt18+ Nt19+ Nt20+ Nt21+ Nt22+ Nt23+ Nt24+ Nt25+
-                 Nt26+ Nt27+ Nt28+ Nt29+ Nt30+ Nt31+ Nt32+ Nt33+ Nt34+ Nt35+ Nt36+ Nt37+ Nt38+ Nt39+ Nt40+ Nt41+
-                 Nt42+ Nt43+ Nt44+ Nt45+ Nt46+ Nt47+ Nt48+ Nt49+ Nt50+ Nt51+ Nt52+ Nt53+ Nt54+ Nt55+ Nt56+ Nt57+
-                 Nt58+ Nt59+ Nt60,
+nn = neuralnet(formula,
                data = train, hidden = c(31,12), linear.output = FALSE, act.fct = "logistic")
 
 plotnet(nn)
-nn$result.matrix
+#nn$result.matrix
 ````
 
 ```{r}
-test_sub = test[,2:61]
+test_sub = test[, 2:241]
 
 pred = predict(nn, test_sub)
 
